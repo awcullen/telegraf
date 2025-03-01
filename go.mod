@@ -43,6 +43,7 @@ require (
 	github.com/apache/thrift v0.21.0
 	github.com/aristanetworks/goarista v0.0.0-20190325233358-a123909ec740
 	github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5
+	github.com/awcullen/opcua v1.4.0
 	github.com/awnumar/memguard v0.22.5
 	github.com/aws/aws-sdk-go-v2 v1.32.8
 	github.com/aws/aws-sdk-go-v2/config v1.28.6
@@ -100,7 +101,7 @@ require (
 	github.com/google/licensecheck v0.3.1
 	github.com/google/uuid v1.6.0
 	github.com/gopacket/gopacket v1.3.1
-	github.com/gopcua/opcua v0.5.3
+	github.com/gopcua/opcua v0.6.1
 	github.com/gophercloud/gophercloud/v2 v2.0.0-rc.3
 	github.com/gorcon/rcon v1.3.5
 	github.com/gorilla/mux v1.8.1
@@ -212,7 +213,7 @@ require (
 	go.starlark.net v0.0.0-20240925182052-1207426daebd
 	go.step.sm/crypto v0.54.0
 	golang.org/x/crypto v0.31.0
-	golang.org/x/mod v0.21.0
+	golang.org/x/mod v0.22.0
 	golang.org/x/net v0.32.0
 	golang.org/x/oauth2 v0.24.0
 	golang.org/x/sync v0.10.0
@@ -319,6 +320,7 @@ require (
 	github.com/devigned/tab v0.1.1 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/distribution/reference v0.6.0 // indirect
+	github.com/djherbis/buffer v1.2.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dvsekhvalnov/jose2go v1.6.0 // indirect
 	github.com/eapache/go-resiliency v1.7.0 // indirect
@@ -332,6 +334,8 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.4 // indirect
+	github.com/gammazero/deque v1.0.0 // indirect
+	github.com/gammazero/workerpool v1.1.3 // indirect
 	github.com/go-asn1-ber/asn1-ber v1.5.5 // indirect
 	github.com/go-chi/chi/v5 v5.1.0 // indirect
 	github.com/go-darwin/apfs v0.0.0-20211011131704-f84b94dbf348 // indirect
@@ -506,9 +510,9 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0 // indirect
+	golang.org/x/exp v0.0.0-20241204233417-43b7b7cde48d // indirect
 	golang.org/x/time v0.8.0 // indirect
-	golang.org/x/tools v0.26.0 // indirect
+	golang.org/x/tools v0.28.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	golang.zx2c4.com/wireguard v0.0.0-20211209221555-9c9e7e272434 // indirect
 	google.golang.org/genproto v0.0.0-20241118233622-e639e219e697 // indirect
