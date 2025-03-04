@@ -26,11 +26,11 @@ func TestClient(t *testing.T) {
 	input := &opcua_client.Input{
 		EndpointURL:    "opc.tcp://127.0.0.1:46010",
 		SecurityPolicy: "none",
-		Metrics: []opcua_client.MetricDefinition{
+		DataMetrics: []opcua_client.DataMetricDefinition{
 			{
 				Name:               "test",
 				PublishingInterval: 1000.0,
-				DataFields:         map[string]opcua_client.DataFieldDefinition{"ServerTime": {NodeID: "i=2258"}},
+				Fields:             map[string]opcua_client.DataFieldDefinition{"ServerTime": {NodeID: "i=2258"}},
 				Tags:               map[string]string{"foo": "bar"},
 			},
 		},
@@ -65,11 +65,11 @@ func TestClientWithSecurity(t *testing.T) {
 	input := &opcua_client.Input{
 		EndpointURL:    "opc.tcp://127.0.0.1:46010",
 		SecurityPolicy: "Basic256Sha256",
-		Metrics: []opcua_client.MetricDefinition{
+		DataMetrics: []opcua_client.DataMetricDefinition{
 			{
 				Name:               "test",
 				PublishingInterval: 1000.0,
-				DataFields:         map[string]opcua_client.DataFieldDefinition{"ServerTime": {NodeID: "i=2258"}},
+				Fields:             map[string]opcua_client.DataFieldDefinition{"ServerTime": {NodeID: "i=2258"}},
 				Tags:               map[string]string{"foo": "bar"},
 			},
 		},

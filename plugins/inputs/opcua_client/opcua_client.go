@@ -30,24 +30,31 @@ type EventFieldDefinition struct {
 	BrowsePath       string `toml:"browse_path"`
 }
 
-type MetricDefinition struct {
+type DataMetricDefinition struct {
+	Name               string                         `toml:"name"`
+	PublishingInterval config.Duration                `toml:"publishing_interval"`
+	Fields             map[string]DataFieldDefinition `toml:"fields"`
+	Tags               map[string]string              `toml:"tags"`
+}
+
+type EventMetricDefinition struct {
 	Name               string                          `toml:"name"`
 	PublishingInterval config.Duration                 `toml:"publishing_interval"`
-	DataFields         map[string]DataFieldDefinition  `toml:"data_fields"`
-	EventFields        map[string]EventFieldDefinition `toml:"event_fields"`
+	Fields             map[string]EventFieldDefinition `toml:"fields"`
 	Tags               map[string]string               `toml:"tags"`
 }
 
 type Input struct {
 	common_tls.ClientConfig
-	EndpointURL    string             `toml:"endpoint_url"`
-	SecurityPolicy string             `toml:"security_policy"`
-	Username       string             `toml:"username"`
-	Password       string             `toml:"password"`
-	ConnectTimeout *config.Duration   `toml:"connect_timeout"`
-	RequestTimeout *config.Duration   `toml:"request_timeout"`
-	SessionTimeout *config.Duration   `toml:"session_timeout"`
-	Metrics        []MetricDefinition `toml:"metric"`
+	EndpointURL    string                  `toml:"endpoint_url"`
+	SecurityPolicy string                  `toml:"security_policy"`
+	Username       string                  `toml:"username"`
+	Password       string                  `toml:"password"`
+	ConnectTimeout *config.Duration        `toml:"connect_timeout"`
+	RequestTimeout *config.Duration        `toml:"request_timeout"`
+	SessionTimeout *config.Duration        `toml:"session_timeout"`
+	DataMetrics    []DataMetricDefinition  `toml:"data_metric"`
+	EventMetrics   []EventMetricDefinition `toml:"event_metric"`
 
 	Log telegraf.Logger `toml:"-"`
 
@@ -107,11 +114,23 @@ func (input *Input) startSession(ctx context.Context) {
 		defer input.cancel()
 		defer input.wg.Done()
 
+	retry:
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			default:
+
+				// metric info
+				type info struct {
+					Name            string
+					Tags            map[string]string
+					Fields          map[string]any
+					FieldNameLookup map[uint32]string
+				}
+
+				// map subscriptionID to metric info
+				infoMap := make(map[uint32]*info, len(input.DataMetrics)+len(input.EventMetrics))
 
 				// begin by opening a secure channel to the opcua server
 				input.Log.Infof("Opening secure channel to endpoint url '%s'", input.EndpointURL)
@@ -119,23 +138,11 @@ func (input *Input) startSession(ctx context.Context) {
 				if err != nil {
 					input.Log.Errorf("Error while opening secure channel to endpoint url '%s'. %s", input.EndpointURL, err)
 					time.Sleep(5 * time.Second)
-					continue
+					continue retry
 				}
 
-				// runtime state
-				type rtMetric struct {
-					Name                 string
-					Tags                 map[string]string
-					DataFields           map[string]any
-					DataFieldNameLookup  map[uint32]string
-					EventFields          map[string]any
-					EventFieldNameLookup map[int]string
-				}
-
-				// for each metric, create a subscription
-				rtMetricMap := make(map[uint32]*rtMetric)
-
-				for _, metric := range input.Metrics {
+				// for each data metric, create a subscription
+				for _, metric := range input.DataMetrics {
 
 					input.Log.Debugf("Creating subscription at endpoint url '%s'", input.EndpointURL)
 					publishingInterval := float64(time.Duration(metric.PublishingInterval).Milliseconds())
@@ -150,22 +157,24 @@ func (input *Input) startSession(ctx context.Context) {
 						input.Log.Errorf("Error while creating subscription at endpoint url '%s'. %s", input.EndpointURL, err)
 						ch.Abort(context.Background())
 						time.Sleep(5 * time.Second)
-						continue
+						continue retry
 					}
 
-					rtm := &rtMetric{Name: metric.Name}
-					rtm.Tags = metric.Tags
-					rtMetricMap[res.SubscriptionID] = rtm
+					info := &info{
+						Name:            metric.Name,
+						Tags:            metric.Tags,
+						Fields:          make(map[string]any, len(metric.Fields)),
+						FieldNameLookup: make(map[uint32]string, len(metric.Fields)),
+					}
+					infoMap[res.SubscriptionID] = info
 
 					// for each field, prepare a monitored item
-					itemsToCreate := make([]ua.MonitoredItemCreateRequest, 0, len(metric.DataFields)+1)
+					itemsToCreate := make([]ua.MonitoredItemCreateRequest, 0, len(metric.Fields))
 					handle := uint32(0)
-					rtm.DataFields = make(map[string]any, len(metric.DataFields))
-					rtm.DataFieldNameLookup = make(map[uint32]string, len(metric.DataFields))
 
-					for k, o := range metric.DataFields {
+					for k, o := range metric.Fields {
 						handle++
-						rtm.DataFieldNameLookup[handle] = k
+						info.FieldNameLookup[handle] = k
 
 						itemsToCreate = append(itemsToCreate, ua.MonitoredItemCreateRequest{
 							ItemToMonitor: ua.ReadValueID{
@@ -182,12 +191,64 @@ func (input *Input) startSession(ctx context.Context) {
 						})
 					}
 
-					rtm.EventFields = make(map[string]any, len(metric.EventFields))
-					rtm.EventFieldNameLookup = make(map[int]string, len(metric.EventFields))
-					selectClauses := make([]ua.SimpleAttributeOperand, len(metric.EventFields))
-					idx := 0
-					for k, o := range metric.EventFields {
-						rtm.EventFieldNameLookup[idx] = k
+					// create monitored items for subscription
+					input.Log.Debugf("Creating %d monitored item(s) for subscription '%d' at endpoint url '%s'", len(itemsToCreate), res.SubscriptionID, input.EndpointURL)
+					req2 := &ua.CreateMonitoredItemsRequest{
+						SubscriptionID:     res.SubscriptionID,
+						TimestampsToReturn: ua.TimestampsToReturnNeither,
+						ItemsToCreate:      itemsToCreate,
+					}
+					res2, err := ch.CreateMonitoredItems(ctx, req2)
+					if err != nil {
+						input.Log.Errorf("Error while creating monitored items for subscription '%d' at endpoint url '%s'. %s", res.SubscriptionID, input.EndpointURL, err)
+						ch.Abort(context.Background())
+						time.Sleep(5 * time.Second)
+						continue retry
+					}
+
+					// check each monitored item was successfully created.
+					for i, item := range req2.ItemsToCreate {
+						if code := res2.Results[i].StatusCode; code.IsBad() {
+							input.Log.Errorf("Error while creating monitored item '%s' for subscription '%d' at endpoint url '%s'. %s", item.ItemToMonitor.NodeID, res.SubscriptionID, input.EndpointURL, code.Error())
+						}
+					}
+				}
+
+				// for each event metric, create a subscription
+				for _, metric := range input.EventMetrics {
+
+					input.Log.Debugf("Creating subscription at endpoint url '%s'", input.EndpointURL)
+					publishingInterval := float64(time.Duration(metric.PublishingInterval).Milliseconds())
+					req := &ua.CreateSubscriptionRequest{
+						RequestedPublishingInterval: publishingInterval,
+						RequestedMaxKeepAliveCount:  3,
+						RequestedLifetimeCount:      3 * 3,
+						PublishingEnabled:           true,
+					}
+					res, err := ch.CreateSubscription(ctx, req)
+					if err != nil {
+						input.Log.Errorf("Error while creating subscription at endpoint url '%s'. %s", input.EndpointURL, err)
+						ch.Abort(context.Background())
+						time.Sleep(5 * time.Second)
+						continue retry
+					}
+
+					info := &info{
+						Name:            metric.Name,
+						Tags:            metric.Tags,
+						Fields:          make(map[string]any, len(metric.Fields)),
+						FieldNameLookup: make(map[uint32]string, len(metric.Fields)),
+					}
+					infoMap[res.SubscriptionID] = info
+
+					// for each field, prepare a monitored item
+					itemsToCreate := make([]ua.MonitoredItemCreateRequest, 0, len(metric.Fields))
+					handle := uint32(0)
+
+					selectClauses := make([]ua.SimpleAttributeOperand, len(metric.Fields))
+					idx := uint32(0)
+					for k, o := range metric.Fields {
+						info.FieldNameLookup[idx] = k
 						selectClauses[idx] =
 							ua.SimpleAttributeOperand{
 								TypeDefinitionID: ua.ParseNodeID(o.TypeDefinitionID),
@@ -227,7 +288,7 @@ func (input *Input) startSession(ctx context.Context) {
 						input.Log.Errorf("Error while creating monitored items for subscription '%d' at endpoint url '%s'. %s", res.SubscriptionID, input.EndpointURL, err)
 						ch.Abort(context.Background())
 						time.Sleep(5 * time.Second)
-						continue
+						continue retry
 					}
 
 					// check each monitored item was successfully created.
@@ -247,55 +308,69 @@ func (input *Input) startSession(ctx context.Context) {
 				for {
 					res, err := ch.Publish(ctx, req)
 					if err != nil {
+						input.Log.Errorf("Error while publishing monitored items at endpoint url '%s'. %s", input.EndpointURL, err)
 						break
 					}
 
-					// lookup runtime metric from subscriptionid
-					if rtm, ok := rtMetricMap[res.SubscriptionID]; ok {
+					// loop thru the notification to update the metric fields
+					for _, obj := range res.NotificationMessage.NotificationData {
+						switch data := obj.(type) {
+						case ua.DataChangeNotification:
+							input.Log.Debugf("Received %d data change(s) for subscription '%d' at endpoint url '%s'", len(data.MonitoredItems), res.SubscriptionID, input.EndpointURL)
 
-						// loop thru the notification to update the metric fields
-						for _, obj := range res.NotificationMessage.NotificationData {
-							switch data := obj.(type) {
-							case ua.DataChangeNotification:
-								input.Log.Debugf("Received %d data change(s) for subscription '%d' at endpoint url '%s'", len(data.MonitoredItems), res.SubscriptionID, input.EndpointURL)
+							// lookup data metric from subscriptionid
+							if info, ok := infoMap[res.SubscriptionID]; ok {
+
 								for _, item := range data.MonitoredItems {
 
 									// lookup field name from client handle
-									if name, ok := rtm.DataFieldNameLookup[item.ClientHandle]; ok {
-										v := item.Value
+									if name, ok := info.FieldNameLookup[item.ClientHandle]; ok {
+										dv := item.Value
+
 										// update field value
-										if !v.StatusCode.IsBad() {
-											rtm.DataFields[name] = v.Value
+										if !dv.StatusCode.IsBad() {
+											switch value := dv.Value.(type) {
+											case time.Time:
+												info.Fields[name] = value.UnixNano()
+											case ua.LocalizedText:
+												info.Fields[name] = value.Text
+											default:
+												info.Fields[name] = value
+											}
 										} else {
-											rtm.DataFields[name] = nil
+											info.Fields[name] = nil
 										}
 									}
 								}
 								// send data fields to agent accumulator
-								input.AddFields(rtm.Name, rtm.DataFields, rtm.Tags)
-								input.Log.Debugf("Sent %d field(s) to metric '%s'", len(rtm.DataFields), rtm.Name)
+								input.AddFields(info.Name, info.Fields, info.Tags)
+								input.Log.Debugf("Sent %d field(s) to metric '%s'", len(info.Fields), info.Name)
+							}
 
-							case ua.EventNotificationList:
-								input.Log.Debugf("Received %d event(s) for subscription '%d' at endpoint url '%s'", len(data.Events), res.SubscriptionID, input.EndpointURL)
+						case ua.EventNotificationList:
+							input.Log.Debugf("Received %d event(s) for subscription '%d' at endpoint url '%s'", len(data.Events), res.SubscriptionID, input.EndpointURL)
+
+							// lookup event metric from subscriptionid
+							if info, ok := infoMap[res.SubscriptionID]; ok {
 								for _, item := range data.Events {
 
 									// update event fields
 									for j, ef := range item.EventFields {
-										if name, ok := rtm.EventFieldNameLookup[j]; ok {
-											switch v := ef.(type) {
+										if name, ok := info.FieldNameLookup[uint32(j)]; ok {
+											switch value := ef.(type) {
 											case time.Time:
-												rtm.EventFields[name] = v.UnixNano()
+												info.Fields[name] = value.UnixNano()
 											case ua.LocalizedText:
-												rtm.EventFields[name] = v.Text
+												info.Fields[name] = value.Text
 											default:
-												rtm.EventFields[name] = v
+												info.Fields[name] = value
 											}
 										}
 									}
 
 									// send event fields to agent accumulator
-									input.AddFields(rtm.Name, rtm.EventFields, rtm.Tags)
-									input.Log.Debugf("Sent %d field(s) to metric '%s'", len(rtm.EventFields), rtm.Name)
+									input.AddFields(info.Name, info.Fields, info.Tags)
+									input.Log.Debugf("Sent %d field(s) to metric '%s'", len(info.Fields), info.Name)
 								}
 							}
 						}
@@ -319,7 +394,7 @@ func (input *Input) startSession(ctx context.Context) {
 					input.Log.Errorf("Error while closing secure channel to endpoint url '%s'. %s", input.EndpointURL, err)
 					ch.Abort(context.Background())
 					time.Sleep(5 * time.Second)
-					continue
+					continue retry
 				}
 			}
 		}

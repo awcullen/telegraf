@@ -35,76 +35,91 @@ to use them.
   ## Endpoint URL of the server.
   # endpoint_url = "opc.tcp://[host]:[port]"
 
-  ## Optional security policy, one of "None", "Basic128Rsa15", "Basic256", "Basic256Sha256", "Aes128_Sha256_RsaOaep", or "Aes256_Sha256_RsaPss".
+  ## Optional security policy, one of "none", "Basic128Rsa15", "Basic256", "Basic256Sha256", "Aes128_Sha256_RsaOaep", or "Aes256_Sha256_RsaPss".
   ## Default selects the most secure policy offered by the server.
   # security_policy = ""
 
   ## Optional paths to client certificate and private key files. Required when security policy is not "none".
-  # tls_cert = "./pki/cert.pem"
-  # tls_key = "./pki/key.pem"
+  # tls_cert = "./pki/client.crt"
+  # tls_key = "./pki/client.key"
 
   ## Optional path to root certificate file. Required for verifying server certificates.
-  # tls_ca = "./pki/ca.pem"
+  # tls_ca = "./pki/ca.crt"
 
-  ## Optional flag to skip chain & host verification. (default false)
-  # insecure_skip_verify = false
+  ## Optional flag to skip chain & host verification
+  # insecure_skip_verify = true
 
-  ## Optional username identity. (default is anonymous identity)
+  ## Optional username identity. Default is anonymous identity.
   # username = ""
   # password = ""
 
-  ## Optional time to wait for a connection response. (default 5000ms)
-  # connect_timeout = ""
+  ## Optional time to wait for a connection response.
+  # connect_timeout = "5000ms"
 
-  ## Optional time before a request is cancelled. (default 1500ms)
-  # request_timeout = ""
+  ## Optional time before a request is cancelled.
+  # request_timeout = "1500ms"
 
-  ## Optional time the session will remain open without activity. (default 2m)
-  # session_timeout = ""
+  ## Optional time the session will remain open without activity.
+  # session_timeout = "2m"
 
-  ## Optional override of the log-level. Possible values are "error", "warn", "info", "debug" and "trace".
-  # log_level = ""
+  ## Optional override of the log-level for this plugin. Possible values are "error", "warn", "info", "debug" and "trace".
+  # log_level = "info"
 
-  ## A metric consists of a name, a publishing interval, a list of fields, and an optional list of tags. 
-  # [[inputs.opcua_client.metric]]
+  ## A data metric subscribes to data changes of the server. 
+  ## A metric containing the last value of each field will be generated at the publishing interval.
+  # [[inputs.opcua_client.data_metric]]
 
-  ## Name of the metric (also known as Measurement or Table).
-  # name = "example_1"
+  ## Name of the metric. (also know as Measurement or Table)
+  # name = "data_metric"
 
-  ## Interval to publish the metric.
+  ## Interval to publish the data.
   # publishing_interval = "5s"
 
-  ## Data Fields specify which data values to collect from the OPCUA server.
-  ## A single metric containing the last value of each data field will be generated at the publishing interval.
-  ## Use the form:
-  ## name = { node_id = "" }
+  ## The data values to collect from the OPCUA server.
+  ## Use:
+  ## field_name = { node_id = "" }
   ## where:
-  ## name          - Alphanumeric and must begin with a letter or a number. Names can contain dashes (-) and underscores (_).
-  ## node_id       - NodeID of the variable to read. Supports numeric, string, guid, and opaque identifiers.
-  # [inputs.opcua_client.metric.data_fields]
+  ## field_name - Alphanumeric and must begin with a letter or a number. Names can contain dashes (-) and underscores (_).
+  ## node_id    - NodeID of the variable to read. Supports numeric, string, guid, and opaque identifiers.
+  # [inputs.opcua_client.data_metric.fields]
   # float_field = { node_id = "ns=3;s=Demo.Dynamic.Scalar.Float" }
   # int32_field = { node_id = "ns=3;s=Demo.Dynamic.Scalar.Int32" } 
  
-  ## Event Fields specify which fields of OPCUA event type to collect from the OPCUA server.
-  ## Multiple metrics, where each metric contains the fields of a single event, may be generated the publishing interval.
-  ## Use the form:
-  ## name = { typedefinition_id = "", browse_path = "" }
+  ## Optional list of tags
+  # [inputs.opcua_client.data_metric.tags]
+  # dev = "device_1"
+  # loc = "location_1"
+
+
+  ## An event metric subscribes to events of the server. 
+  ## A list of metrics containing the event fields of each event will be generated at the publishing interval.
+  # [[inputs.opcua_client.event_metric]]
+
+  ## Name of the metric. (also know as Measurement or Table)
+  # name = "event_metric"
+
+  ## Interval to publish events.
+  # publishing_interval = "5s"
+
+  ## The event fields to collect from the OPCUA server.
+  ## Use:
+  ## field_name = { typedefinition_id = "", browse_path = "" }
   ## where:
-  ## name              - Alphanumeric and must begin with a letter or a number. Names can contain dashes (-) and underscores (_).
-  ## typedefinition_id - NodeID of the event type. Supports numeric, string, guid, and opaque identifiers.
+  ## field_name        - Alphanumeric and must begin with a letter or a number. Names can contain dashes (-) and underscores (_).
+  ## typedefinition_id - NodeID of an event type. Supports numeric, string, guid, and opaque identifiers.
   ## browse_path       - A sequence of browse names that specify which event field to read.
-  # [inputs.opcua_client.metric.event_fields]
-  # event_source = { typedefinition_id = "i=2041", browse_path = "SourceName" }
-  # event_message = { typedefinition_id = "i=2041", browse_path = "Message" }
-  # event_severity = { typedefinition_id = "i=2041", browse_path = "Severity" }
-  # event_acked = { typedefinition_id = "i=2881", browse_path = "AckedState/Id" }
-  # event_active = { typedefinition_id = "i=2915", browse_path = "ActiveState/Id" }
+  # [inputs.opcua_client.event_metric.fields]
+  # source = { typedefinition_id = "i=2041", browse_path = "SourceName" }
+  # message = { typedefinition_id = "i=2041", browse_path = "Message" }
+  # severity = { typedefinition_id = "i=2041", browse_path = "Severity" }
+  # ackedState = { typedefinition_id = "i=2881", browse_path = "AckedState/Id" }
+  # activeState = { typedefinition_id = "i=2915", browse_path = "ActiveState/Id" }
 
   ## Optional list of tags
-  # [inputs.opcua_client.metric.tags]
-  # device = "device_1"
-  # location = "location_1"
-
+  # [inputs.opcua_client.event_metric.tags]
+  # dev = "device_1"
+  # loc = "location_1"
+  
 ```
 
 ## Example Output
